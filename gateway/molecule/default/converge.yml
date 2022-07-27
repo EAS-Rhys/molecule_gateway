@@ -1,0 +1,8 @@
+- name: Converge
+  hosts: all
+  # tasks:
+  #   - name: "Include vmware.hobo"
+  #     include_role:
+  #       name: "vmware.hobo"
+
+- import_playbook: ../../playbook.yml

@@ -1,0 +1,205 @@
+---
+# tasks file for gateway #--------------------------------------------------------------------------------------------------
+
+- name: refresh subscription manager
+  command: subscription-manager refresh
+
+- name: Install iptables
+  ansible.builtin.yum:
+    name: iptables-services
+    state: latest
+
+# #--------------------------------------------------------------------------------------------------
+# # - name: Print the gateway for each host when defined
+# #   ansible.builtin.debug:
+# #     msg: var=hostvars['gateway']
+
+# # - name: debug hostvars
+# #   debug: var=hostvars['sing-max-gateway'].ansible_host
+# # - name: echo gateway into network scripts
+# #   commands: echo "GATEWAY=192.168.4.196" >> /etc/sysconfig/network-scripts/ifcfg-ens224
+# # - name: delete annoying file
+# #   command: rm -rf /etc/sysconfig/network-scripts/ifcfg-ens224
+
+# # - name: delete annoying file
+# #   file:
+# #     path: /etc/sysconfig/network-scripts/ifcfg-ens224
+# #     state: absent
+# #--------------------------------------------------------------------------------------------------
+
+- name: delete multiple file
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - /etc/sysconfig/network-scripts/ifcfg-ens224
+    - /etc/sysconfig/network
+
+- name: set gateway in network-scripts
+  blockinfile:
+    dest: /etc/sysconfig/network-scripts/ifcfg-ens224
+    block: |
+      NAME=ens224
+      DEVICE=ens224
+      HWADDR=00:50:56:87:9b:97
+      ONBOOT=yes
+      USERCTL=no
+      BOOTPROTO=static
+      NETMASK=255.255.255.0
+      IPADDR=10.0.0.1
+      PEERDNS=yes
+      GATEWAY={{ hostvars['sing-max-gateway'].ansible_host }}
+
+    insertafter: EOF
+    create: yes
+
+# #--------------------------------------------------------------------------------------------------
+# # - name: delete annoying file 2
+# #   command: rm -rf /etc/sysconfig/network
+
+# # - name: delete annoying file 2
+# #   file:
+# #     path: /etc/sysconfig/network
+# #     state: absent
+# #--------------------------------------------------------------------------------------------------
+
+- name: set gateway in network
+  blockinfile:
+    dest: /etc/sysconfig/network
+    block: |
+      NETWORKING=yes
+      HOSTNAME=nat
+      GATEWAY={{ hostvars['sing-max-gateway'].ansible_host }}
+
+    insertafter: EOF
+    create: yes
+
+# #--------------------------------------------------------------------------------------------------
+# # - name: Copy using inline content
+# #   ansible.builtin.copy:
+# #   content: |
+# #     NETWORKING=yes
+# #     HOSTNAME=nat
+# #     GATEWAY={{ hostvars['sing-max-gateway'].ansible_host }}
+# #   dest: /etc/sysconfig/network
+# #--------------------------------------------------------------------------------------------------
+
+- name: flush iptables mangle
+  ansible.builtin.iptables:
+    table: mangle
+    flush: yes
+
+- name: flush iptables nat
+  ansible.builtin.iptables:
+    table: nat
+    flush: yes
+#--------------------------------------------------------------------------------------------------
+# - name: Iptables flush filter
+#   ansible.builtin.iptables:
+#     table: nat, mangle
+#     chain: "{{ item }}"
+#     flush: yes
+#   with_items: ["INPUT", "OUTPUT", "PREROUTING", "POSTROUTING"]
+# - name: iptables
+#   ansible.builtin.iptables:
+#     rules: |
+#       -X
+#       -s 192.168.0.0/24 -j ACCEPT
+#       -t nat -X
+#       -t mangle -X
+#       -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+#       -A FORWARD -i eth1 -j ACCEPT
+
+# - name: drop nat
+#   ansible.builtin.iptables:
+#     table: nat
+#     chain_management: true
+#     state: absent
+#     flush: yes
+
+# - name: drop mangle
+#   ansible.builtin.iptables:
+#     table: mangle
+#     chain_management: true
+#     state: absent
+#     flush: yes
+
+# # - name: deleting iptables tables
+# #   command: iptables -X
+
+# - name: deleting iptables tables
+#   command: iptables -t nat -X
+
+# - name: deleting iptables tables
+#   command: iptables -t mangle -X
+#--------------------------------------------------------------------------------------------------
+
+- name: drop nat
+  ansible.builtin.iptables:
+    table: nat
+    chain: [POSTROUTING, INPUT, OUTPUT, PREROUTING, FORWARD]
+    state: absent
+
+- name: drop mangle
+  ansible.builtin.iptables:
+    table: mangle
+    chain: [POSTROUTING, INPUT, OUTPUT, PREROUTING, FORWARD]
+    state: absent
+
+# #--------------------------------------------------------------------------------------------------
+# # - name: iptables forwarding (placeholder for module)
+# #   command: iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+# #--------------------------------------------------------------------------------------------------
+
+- name: post MASQUERADE
+  ansible.builtin.iptables:
+    table: nat
+    chain: POSTROUTING
+    out_interface: ens192
+    jump: MASQUERADE
+
+- name: forward ACCEPT
+  ansible.builtin.iptables:
+    chain: FORWARD
+    in_interface: ens224
+    jump: ACCEPT
+# #--------------------------------------------------------------------------------------------------
+# # - name: iptables forwarding (placeholder for module)
+# #   command: iptables -A FORWARD -i eth1 -j ACCEPT
+
+# # - name: kernel packaging
+# #   blockinfile:
+# #     dest: /proc/sys/net/ipv4/ip_forward
+# #     block: |
+# #       1
+# #     insertafter: EOF
+# #     create: yes
+# #--------------------------------------------------------------------------------------------------
+
+- name: kernel package
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: yes
+    state: present
+
+- name: make permanent
+  ansible.builtin.lineinfile:
+    path: /etc/sysctl.conf
+    line: net.ipv4.ip_forward=1
+
+- name: save
+  command: service iptables save
+
+- name: iptables save
+  service:
+    name: iptables
+    state: restarted
+
+- name: nmcli commands
+  command: nmcli connection reload
+
+- name: network manager
+  service:
+    name: NetworkManager
+    state: restarted
