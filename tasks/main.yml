@@ -48,7 +48,7 @@
       NETMASK=255.255.255.0
       IPADDR=10.0.0.1
       PEERDNS=yes
-      GATEWAY={{ hostvars['sing-max-gateway'].ansible_host }}
+      GATEWAY={{ ansible_host }}
 
     insertafter: EOF
     create: yes
@@ -69,7 +69,7 @@
     block: |
       NETWORKING=yes
       HOSTNAME=nat
-      GATEWAY={{ hostvars['sing-max-gateway'].ansible_host }}
+      GATEWAY={{ ansible_host }}
 
     insertafter: EOF
     create: yes
